@@ -1,49 +1,20 @@
+import json
 import numpy as np
 from flask import Flask, request, jsonify
-from keras.preprocessing.sequence import pad_sequences
-from keras.layers import SpatialDropout1D, LSTM
+from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import pad_sequences
 import tensorflow as tf
-import json
-from keras.models import load_model
-
-# Custom SpatialDropout1D to handle deserialization issues
-class CustomSpatialDropout1D(SpatialDropout1D):
-    def __init__(self, rate, **kwargs):
-        kwargs.pop('noise_shape', None)
-        kwargs.pop('seed', None)
-        kwargs.pop('trainable', None)
-        super(CustomSpatialDropout1D, self).__init__(rate, **kwargs)
-
-    @classmethod
-    def from_config(cls, config):
-        config.pop('trainable', None)
-        return cls(**config)
-
-# Custom LSTM to handle deserialization issues
-class CustomLSTM(LSTM):
-    def __init__(self, units, **kwargs):
-        kwargs.pop('time_major', None)
-        super(CustomLSTM, self).__init__(units, **kwargs)
-
-    @classmethod
-    def from_config(cls, config):
-        config.pop('time_major', None)
-        return cls(**config)
-
-# Register custom layers
-tf.keras.utils.get_custom_objects().update({'SpatialDropout1D': CustomSpatialDropout1D, 'LSTM': CustomLSTM})
 
 app = Flask(__name__)
 
-# Load the pre-trained model with custom objects
-lstm_model = load_model('models/lstm_model.h5', custom_objects={'SpatialDropout1D': CustomSpatialDropout1D, 'LSTM': CustomLSTM})
+# Load the pre-trained model
+lstm_model = load_model('models/lstm_model.h5')
 
 # Load tokenizer configuration
 with open('models/tokenizer.json', 'r') as f:
-    tokenizer_data = json.load(f)
-    tokenizer = Tokenizer()
-    tokenizer.word_index = tokenizer_data.get('word_index')
+    tokenizer_config = json.load(f)
+    tokenizer = Tokenizer.from_config(tokenizer_config)
 
 # Load max length
 with open('models/max_length.txt', 'r') as f:
