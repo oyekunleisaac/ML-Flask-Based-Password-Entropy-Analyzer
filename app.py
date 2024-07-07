@@ -1,52 +1,68 @@
-import json
-import numpy as np
 from flask import Flask, request, jsonify
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing.text import Tokenizer
-from keras.preprocessing.sequence import pad_sequences
 import tensorflow as tf
+from tensorflow.keras.layers import SpatialDropout1D
+import json
 
 app = Flask(__name__)
 
-# Load the pre-trained model
-lstm_model = load_model('models/lstm_model.h5')
+# Custom SpatialDropout1D to handle 'trainable' and 'noise_shape' arguments
+class CustomSpatialDropout1D(SpatialDropout1D):
+    @classmethod
+    def from_config(cls, config):
+        config.pop('trainable', None)
+        config.pop('noise_shape', None)
+        return cls(**config)
 
-# Load tokenizer configuration
-with open('models/tokenizer.json', 'r') as f:
-    tokenizer_config = json.load(f)
-    tokenizer = Tokenizer.from_config(tokenizer_config)
+# Custom LSTM to handle 'time_major' argument
+from tensorflow.keras.layers import LSTM
 
-# Load max length
-with open('models/max_length.txt', 'r') as f:
-    max_length = int(f.read().strip())
+class CustomLSTM(LSTM):
+    @classmethod
+    def from_config(cls, config):
+        config.pop('time_major', None)
+        return cls(**config)
+
+# Paths to model files
+lstm_model_path = 'models/lstm_model.h5'
+tokenizer_path = 'models/tokenizer.json'
+max_length_path = 'models/max_length.txt'
+
+# Load the tokenizer
+with open(tokenizer_path, 'r') as f:
+    tokenizer_data = json.load(f)
+tokenizer = tf.keras.preprocessing.text.tokenizer_from_json(tokenizer_data)
+
+# Load the max_length
+with open(max_length_path, 'r') as f:
+    max_length = int(f.read())
+
+# Load the LSTM model with custom objects
+lstm_model = tf.keras.models.load_model(lstm_model_path, custom_objects={'SpatialDropout1D': CustomSpatialDropout1D, 'LSTM': CustomLSTM})
+
+@app.route('/')
+def index():
+    return 'Welcome to the Password Entropy Analyzer!'
 
 @app.route('/analyze', methods=['POST'])
-def analyze():
-    data = request.json
-    password = data.get('password')
+def analyze_password():
+    password = request.json['password']
+    sequence = tokenizer.texts_to_sequences([password])
+    padded_sequence = tf.keras.preprocessing.sequence.pad_sequences(sequence, maxlen=max_length)
+    prediction = lstm_model.predict(padded_sequence)[0][0]
     
-    # Preprocess the password to match the training format
-    padded_password_array = preprocess_password(password)
-    
-    # Make the prediction using the model
-    prediction = analyze_password(padded_password_array)
-    
-    # Return the prediction as a JSON response
-    return jsonify({'prediction': prediction.tolist()})
+    # Categorize the password strength
+    if prediction < 0.3:
+        strength = 'Weak'
+    elif prediction < 0.7:
+        strength = 'Medium'
+    else:
+        strength = 'Strong'
 
-def preprocess_password(password):
-    # Tokenize the password using the loaded tokenizer
-    sequences = tokenizer.texts_to_sequences([password])
-    
-    # Pad the sequences to ensure they are the same length as used during training
-    padded_password_array = pad_sequences(sequences, maxlen=max_length)
-    
-    return padded_password_array
-
-def analyze_password(padded_password_array):
-    # Use the model to predict the password strength
-    prediction = lstm_model.predict(padded_password_array)
-    return prediction
+    return jsonify({
+        'prediction': float(prediction),
+        'strength': strength,
+        'message': f'The password strength is categorized as {strength}.'
+    })
 
 if __name__ == '__main__':
     app.run(debug=True)
