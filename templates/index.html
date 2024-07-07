@@ -26,7 +26,7 @@
             display: flex;
             flex-direction: column;
         }
-        input[type="text"], input[type="submit"] {
+        input[type="text"], select, input[type="submit"] {
             padding: 10px;
             margin: 5px 0;
             border-radius: 4px;
@@ -49,17 +49,59 @@
 <body>
     <div class="container">
         <h1>Password Entropy Analyzer</h1>
-        <form method="post" action="/analyze">
-            <input type="text" name="password" placeholder="Enter your password" required>
+        <form id="analyze-form">
+            <input type="text" id="password" name="password" placeholder="Enter your password" required>
+            <select id="context" name="context">
+                <option value="general">General</option>
+                <option value="banking">Banking</option>
+                <option value="email">Email</option>
+            </select>
             <input type="submit" value="Analyze">
         </form>
-        {% if password and prediction %}
-        <div class="result">
+        <div class="result" id="result" style="display:none;">
             <h2>Analysis Result</h2>
-            <p>Password: {{ password }}</p>
-            <p>Prediction: {{ prediction }}</p>
+            <p id="password-display"></p>
+            <p id="prediction-display"></p>
+            <p id="strength-display"></p>
+            <p id="message-display"></p>
+            <p id="behavior-display"></p>
+            <p id="context-display"></p>
         </div>
-        {% endif %}
     </div>
+
+    <script>
+        let startTime;
+
+        document.getElementById('password').addEventListener('focus', function() {
+            startTime = new Date();
+        });
+
+        document.getElementById('analyze-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const password = document.getElementById('password').value;
+            const context = document.getElementById('context').value;
+            const endTime = new Date();
+            const typingTime = (endTime - startTime) / 1000; 
+
+            fetch('/analyze', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ password, typing_time: typingTime, context })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('result').style.display = 'block';
+                document.getElementById('password-display').innerText = 'Password: ' + password;
+                document.getElementById('prediction-display').innerText = 'Prediction: ' + data.prediction;
+                document.getElementById('strength-display').innerText = 'Strength: ' + data.strength;
+                document.getElementById('message-display').innerText = data.message;
+                document.getElementById('behavior-display').innerText = data.behavior_analysis;
+                document.getElementById('context-display').innerText = data.context_warning;
+            })
+            .catch(error => console.error('Error:', error));
+        });
+    </script>
 </body>
 </html>

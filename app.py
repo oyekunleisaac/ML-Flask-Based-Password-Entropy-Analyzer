@@ -1,7 +1,8 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import tensorflow as tf
 from tensorflow.keras.layers import SpatialDropout1D
 import json
+import time
 
 app = Flask(__name__)
 
@@ -41,15 +42,19 @@ lstm_model = tf.keras.models.load_model(lstm_model_path, custom_objects={'Spatia
 
 @app.route('/')
 def index():
-    return 'Welcome to the Password Entropy Analyzer!'
+    return render_template('index.html')
 
 @app.route('/analyze', methods=['POST'])
 def analyze_password():
-    password = request.json['password']
+    data = request.json
+    password = data.get('password')
+    typing_time = data.get('typing_time')
+    context = data.get('context')
+    
     sequence = tokenizer.texts_to_sequences([password])
     padded_sequence = tf.keras.preprocessing.sequence.pad_sequences(sequence, maxlen=max_length)
     prediction = lstm_model.predict(padded_sequence)[0][0]
-    
+
     # Categorize the password strength
     if prediction < 0.3:
         strength = 'Weak'
@@ -58,10 +63,26 @@ def analyze_password():
     else:
         strength = 'Strong'
 
+    # Adding behavioral analysis
+    if typing_time > 5:
+        behavior_analysis = 'You took a while to type the password. Consider a password manager for stronger, more complex passwords.'
+    else:
+        behavior_analysis = 'You typed the password quickly. Ensure it’s not a common or reused password.'
+
+    # Context awareness
+    if context == 'banking':
+        context_warning = 'For banking, use a unique password that is not used elsewhere.'
+    elif context == 'email':
+        context_warning = 'Ensure your email password is strong as it can be a target for hackers.'
+    else:
+        context_warning = 'Consider the importance of the service when choosing your password.'
+
     return jsonify({
         'prediction': float(prediction),
         'strength': strength,
-        'message': f'The password strength is categorized as {strength}.'
+        'message': f'The password strength is categorized as {strength}.',
+        'behavior_analysis': behavior_analysis,
+        'context_warning': context_warning
     })
 
 if __name__ == '__main__':
